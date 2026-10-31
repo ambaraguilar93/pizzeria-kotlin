@@ -1,69 +1,55 @@
-// Punto de entrada: junta todas las piezas y muestra el resumen del pedido.
-fun main() {
-    println("=====================================")
-    println("==  BIENVENIDO A LA PIZZERÍA       ==")
-    println("=====================================")
+// Punto de entrada (se crean los objetos iniciales, conecta las dependencias y arranca el controlador)
 
-    // Datos iniciales del negocio
-    val pizza: Pizza = Pizza("Pepperoni", 9500, 10)
-    val repartidores: List<Repartidor> = listOf(
-        Repartidor("Ambar"),
-        Repartidor("Bastian"),
-        Repartidor("Luis")
+fun crearCatalogo(): List<Producto> = listOf(
+    Producto("Pepperoni", 9500, mapOf("masa" to 1, "salsa de tomate" to 1, "queso" to 1, "pepperoni" to 1)),
+    Producto("Margarita", 8500, mapOf("masa" to 1, "salsa de tomate" to 1, "queso" to 1, "albahaca" to 1)),
+    Producto("Hawaiana", 9000, mapOf("masa" to 1, "salsa de tomate" to 1, "queso" to 1, "jamón" to 1, "piña" to 1))
+)
+
+fun crearRepartidores(): List<Repartidor> = listOf(
+    Repartidor("Ambar", "+56911111111", 1.2),
+    Repartidor("Bastian", "+56922222222", 2.5),
+    Repartidor("Luis", "+56933333333", 0.8)
+)
+
+// Poblamiento de pedidos iniciales
+fun crearPedidosIniciales(catalogo: List<Producto>, repartidores: List<Repartidor>): Array<Pedido> {
+    val (pepperoni, margarita, hawaiana) = catalogo
+
+    val enCamino = Pedido(
+        1, Cliente("Camila Rojas", "Av. Providencia 1234", "+56987654321", "camila@correo.cl"),
+        listOf(pepperoni, pepperoni, margarita), estadoInicial = EstadoPedido.EN_CAMINO
+    )
+    // Ejemplo de repartidor ocupado
+    val luis = repartidores.first { it.nombre == "Luis" }
+    luis.ocupar()
+    enCamino.asignarRepartidor(luis)
+
+    // Ejemplo de pedido listo
+    val listo = Pedido(
+        2, Cliente("Diego Soto", "Los Leones 456", "+56911112222", "diego@correo.cl"),
+        List(4) { hawaiana }, notas = "Sin cebolla", estadoInicial = EstadoPedido.LISTO
     )
 
-    // Registrar al cliente y mostrar los datos registrados
-    val cliente: Cliente = registrarCliente()
+    // Ejemplo de pedido en preparacion
+    val enPreparacion = Pedido(
+        3, Cliente("Valentina Pérez", "Irarrázaval 789", TELEFONO_POR_DEFECTO, CORREO_POR_DEFECTO),
+        listOf(margarita)
+    )
 
-    println("\nDatos registrados:")
-    println("  Nombre:    ${cliente.nombre}")
-    println("  Dirección: ${cliente.direccion}")
-    println("  Teléfono:  ${cliente.telefono}")
+    return arrayOf(enCamino, listo, enPreparacion)
+}
 
-    // Datos del pedido
-    println("\n--- NUEVO PEDIDO ---")
-    println("Pizza: ${pizza.nombrePizza} - Precio unitario: $${pizza.precioUnitario}")
-    println("Ingredientes disponibles: ${pizza.ingredientesDisponibles}")
-    val cantidad: Int = leerEntero("Cantidad de pizzas: ", 0)
+fun main() {
+    val catalogo = crearCatalogo()
+    val repartidores = crearRepartidores()
 
-    if (cantidad <= 0) {
-        println("Cantidad no válida. El pedido no puede ser procesado.")
-        return
-    }
+    val operaciones: OperacionesPizzeria = PizzeriaBackend(
+        catalogo = catalogo,
+        inventario = crearInventarioInicial(),
+        repartidores = repartidores,
+        pedidosIniciales = crearPedidosIniciales(catalogo, repartidores)
+    )
 
-    // Calcular total con descuento
-    val pedido: Pedido = Pedido(idPedido = 1, cantidadPizzas = cantidad)
-    val subtotal: Int = pizza.precioUnitario * cantidad
-    val descuento: Int = calcularDescuento(subtotal, cantidad)
-    pedido.totalPedido = calcularTotal(pizza, cantidad)
-
-    // Verificar stock y reducir inventario
-    println("\n--- VERIFICACIÓN DE STOCK ---")
-    if (!verificarStock(pizza, cantidad)) {
-        println("Pedido cancelado por falta de ingredientes.")
-        return
-    }
-
-    // Asignar repartidor
-    pedido.repartidor = asignarRepartidor(repartidores)
-
-    // Resumen del pedido
-    println("\n=====================================")
-    println("        RESUMEN DEL PEDIDO")
-    println("=====================================")
-    println("CLIENTE")
-    println("  Nombre:    ${cliente.nombre}")
-    println("  Dirección: ${cliente.direccion}")
-    println("  Teléfono:  ${cliente.telefono}")
-    println("PIZZA")
-    println("  Nombre:    ${pizza.nombrePizza}")
-    println("  Precio:    $${pizza.precioUnitario}")
-    println("PEDIDO N° ${pedido.idPedido}")
-    println("  Cantidad:  ${pedido.cantidadPizzas}")
-    println("  Subtotal:  $$subtotal")
-    println("  Descuento: $$descuento")
-    println("  Total:     $${pedido.totalPedido}")
-    println("  Estado:    ${pedido.estadoPedido}")
-    println("  Repartidor: ${pedido.repartidor?.nombre ?: "Sin asignar"}")
-    println("=====================================")
+    PizzeriaControlador(operaciones, PizzeriaUI()).iniciar()
 }

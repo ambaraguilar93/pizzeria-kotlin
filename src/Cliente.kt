@@ -1,7 +1,11 @@
-// Modelo que representa a un cliente de la pizzería.
-// Todos los atributos son val porque una vez registrado, los datos del cliente no cambian.
-data class Cliente(
-    val nombre: String,
+class Cliente(
+    nombre: String,
     val direccion: String,
-    val telefono: String   // String y no Int para usar formato +56
-)
+    val telefono: String,
+    val correo: String
+) : Usuario(nombre, telefono) {
+
+    override fun descripcion(): String = "Cliente: $nombre - $telefono - $correo"
+
+    fun tieneCorreoRegistrado(): Boolean = correo != CORREO_POR_DEFECTO
+}
