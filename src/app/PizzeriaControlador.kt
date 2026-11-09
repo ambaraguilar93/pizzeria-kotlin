@@ -2,10 +2,12 @@
 // Pide datos a la interfaz, llama al backend y le pide a la interfaz mostrar el resultado.
 class PizzeriaControlador(
     private val operaciones: OperacionesPizzeria,
-    private val ui: PizzeriaUI
+    private val ui: PizzeriaUI,
+    private val alIniciar: () -> Unit = {}
 ) {
     fun iniciar() {
         ui.mostrarBienvenida()
+        alIniciar()
 
         var opcion: Int
         do {
@@ -20,25 +22,52 @@ class PizzeriaControlador(
                 6 -> ui.mostrarEstadisticas(operaciones.obtenerEstadisticas())
                 7 -> ui.mostrarUsuarios(operaciones.listarUsuarios())
                 8 -> ejecutarPruebas()
+                9 -> mostrarYGuardarResumen()
                 0 -> ui.mostrarMensaje("¡Hasta pronto!")
                 else -> ui.mostrarMensaje("Opción no válida.")
             }
         } while (opcion != 0)
     }
 
+    // Registra al cliente evitando duplicados.
+    // Si el cliente ya existe y ingresó otro teléfono u otra dirección, él decide cuál se usa.
+    private fun identificarCliente(ingresado: Cliente): Cliente =
+        when (val resultado = operaciones.registrarCliente(ingresado)) {
+            is ResultadoRegistro.Registrado -> {
+                ui.mostrarMensaje("Cliente nuevo registrado: ${ingresado.nombre}.")
+                resultado.elemento
+            }
+            is ResultadoRegistro.Repetido -> {
+                var cliente = resultado.existente
+                ui.mostrarClienteRepetido(cliente)
+
+                // Teléfono: si acepta, se actualiza en el registro (queda para los próximos pedidos).
+                if (ingresado.telefono != cliente.telefono && ui.preguntarActualizarTelefono(cliente, ingresado)) {
+                    cliente = operaciones.actualizarTelefono(cliente, ingresado.telefono)
+                    ui.mostrarMensaje("Teléfono actualizado a ${cliente.telefono}.")
+                }
+                // Dirección: solo vale para este pedido, el registro no cambia.
+                if (ingresado.direccion != cliente.direccion && ui.preguntarDireccionDelPedido(cliente, ingresado)) {
+                    cliente = cliente.conDireccion(ingresado.direccion)
+                }
+                cliente
+            }
+        }
+
     private fun registrarPedido() {
-        val cliente = ui.leerCliente()
+        val cliente = identificarCliente(ui.leerCliente())
         val productos = ui.leerProductos(operaciones.listarProductos())
 
         if (productos.isEmpty()) {
-            ui.mostrarMensaje("El pedido no tiene pizzas. Pedido cancelado.")
+            ui.mostrarMensaje("El pedido no tiene productos. Pedido cancelado.")
             return
         }
 
+        val fecha = ui.leerFechaPedido()
         val notas = ui.leerNotas()
 
         try {
-            val pedido = operaciones.crearPedido(cliente, productos, notas)
+            val pedido = operaciones.crearPedido(cliente, productos, notas, fecha)
 
             val disponibilidad = operaciones.verificarDisponibilidad(productos)
             if (disponibilidad is Disponibilidad.Insuficiente) {
@@ -96,6 +125,16 @@ class PizzeriaControlador(
             ui.mostrarMensaje("Listo: $ingrediente ahora tiene ${operaciones.obtenerInventario()[ingrediente]} unidades.")
         } catch (e: IllegalArgumentException) {
             ui.mostrarError(e.message)
+        }
+    }
+
+    private fun mostrarYGuardarResumen() {
+        val resumen = armarResumenSemana3()
+        ui.mostrarResumenSemana3(resumen)
+        try {
+            ui.mostrarMensaje("Resumen guardado en: ${guardarResumen(resumen)}")
+        } catch (e: java.io.IOException) {
+            ui.mostrarError("No se pudo guardar el archivo (${e.message}).")
         }
     }
 }

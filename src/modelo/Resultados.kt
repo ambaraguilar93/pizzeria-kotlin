@@ -24,3 +24,6 @@ data class Estadisticas(
 )
 
 data class ResultadoAvance(val pedido: Pedido, val mensaje: String)
+
+// Una sección del resumen de la Semana 3 (título + líneas de texto ya armadas).
+data class SeccionResumen(val titulo: String, val lineas: List<String>)

@@ -1,3 +1,5 @@
+import java.time.LocalDate
+
 // Interfaz de consola, lee datos y muestra resultados.
 class PizzeriaUI {
 
@@ -12,6 +14,24 @@ class PizzeriaUI {
         val linea = readlnOrNull()
         if (linea == null) entradaTerminada = true
         return linea
+    }
+
+    // Pide el dato una y otra vez hasta que sea válido.
+    fun <T> leerHastaValido(
+        mensaje: String,
+        mensajeError: (String) -> String,
+        convertir: (String) -> T?
+    ): T? {
+        while (true) {
+            print(mensaje)
+            val texto = leerLinea()?.trim() ?: ""
+
+            val valor = convertir(texto)
+            if (valor != null) return valor
+
+            if (entradaTerminada) return null
+            println(mensajeError(texto))
+        }
     }
 
     // Cada dato se pide hasta 3 veces, si sigue inválido, se usa el valor por defecto
@@ -76,44 +96,74 @@ class PizzeriaUI {
         println("\n--- REGISTRO DE CLIENTE ---")
         val nombre = formatearNombre(leerTexto("Nombre del cliente: ", "Cliente sin nombre"))
         val direccion = leerTexto("Dirección de entrega: ", "Sin dirección")
-        val telefono = leerTexto(
-            mensaje = "Teléfono de contacto: ",
-            valorPorDefecto = TELEFONO_POR_DEFECTO,
-            mensajeError = "Teléfono no válido (8 a 11 dígitos).",
-            esValido = ::esTelefonoValido
-        )
-        val correo = leerTexto(
+        val telefono = leerHastaValido(
+            mensaje = "Teléfono (10 dígitos, o 12 con código de país, ej: 222 555 0147): ",
+            mensajeError = { "Teléfono no válido: debe tener 10 dígitos (sin código de país) o 12 (con código de país)." },
+            convertir = ::formatearTelefono
+        ) ?: TELEFONO_POR_DEFECTO
+        val correo = leerHastaValido(
             mensaje = "Correo electrónico: ",
-            valorPorDefecto = CORREO_POR_DEFECTO,
-            mensajeError = "Correo no válido (ejemplo: nombre@correo.cl).",
-            esValido = ::esCorreoValido
-        )
+            mensajeError = ::describirErrorCorreo,
+            convertir = { texto -> texto.takeIf { esCorreoValido(it) } }
+        ) ?: CORREO_POR_DEFECTO
 
         return Cliente(nombre, direccion, telefono, correo)
     }
 
-    // Menú de pizzas, deja seleccionar una o mas
+    // Aviso cuando el cliente ya estaba registrado y no se guarda de nuevo.
+    fun mostrarClienteRepetido(existente: Cliente) {
+        println("El cliente ya está registrado: ${existente.nombre} (${existente.correo}). No se guarda de nuevo.")
+    }
+
+    // El cliente decide si cambia el teléfono que tenemos registrado.
+    fun preguntarActualizarTelefono(existente: Cliente, ingresado: Cliente): Boolean =
+        confirmar("Ya tenemos este teléfono: ${existente.telefono}. ¿Actualizarlo a ${ingresado.telefono}? (s/n): ")
+
+    // El cliente decide a qué dirección va este pedido (el registro no cambia).
+    fun preguntarDireccionDelPedido(existente: Cliente, ingresado: Cliente): Boolean {
+        println("Dirección registrada anteriormente: ${existente.direccion}")
+        println("Nueva dirección ingresada:  ${ingresado.direccion}")
+        return confirmar("¿Enviar este pedido a la dirección nueva? (s = nueva, n = anterior): ")
+    }
+
+    fun leerFechaPedido(): LocalDate =
+        leerHastaValido(
+            mensaje = "Fecha del pedido (dd/mm/aaaa, Enter para hoy): ",
+            mensajeError = { "Fecha no válida: usa el formato dd/mm/aaaa y una fecha que exista (ej: 10/11/2026)." },
+            convertir = { texto -> if (texto.isEmpty()) LocalDate.now() else parsearFecha(texto) }
+        ) ?: LocalDate.now()
+
+    private fun mensajeErrorCantidad(texto: String): String {
+        val rango = "entre ${RANGO_CANTIDAD.first} y ${RANGO_CANTIDAD.last}"
+        val numero = convertirEntero(texto) ?: return "Debes ingresar un número entero $rango."
+        return "La cantidad debe estar $rango (ingresaste $numero)."
+    }
+
+    // Menú de productos, deja seleccionar uno o mas
     fun leerProductos(catalogo: List<Producto>): List<Producto> {
         val seleccion = mutableListOf<Producto>()
 
         do {
-            println("\n--- MENÚ DE PIZZAS ---")
+            println("\n--- MENÚ ---")
             catalogo.forEachIndexed { indice, producto -> println("  ${indice + 1}. ${producto.detallarProducto()}") }
 
-            val opcion = leerEntero("Elige una pizza (1-${catalogo.size}): ", 0)
+            val opcion = leerEntero("Elige un producto (1-${catalogo.size}): ", 0)
             val producto = catalogo.getOrNull(opcion - 1)
 
             if (producto == null) {
                 println("Opción no válida.")
             } else {
-                val cantidad = leerEntero("Cantidad de ${producto.nombre}: ", 0)
-                if (cantidad > 0) {
+                // La cantidad debe estar en el rango 1..100: si no, se muestra el error y se vuelve a pedir.
+                val cantidad = leerHastaValido(
+                    mensaje = "Cantidad de ${producto.nombre} (${RANGO_CANTIDAD.first}-${RANGO_CANTIDAD.last}): ",
+                    mensajeError = ::mensajeErrorCantidad,
+                    convertir = { texto -> convertirEntero(texto)?.takeIf { esCantidadValida(it) } }
+                )
+                if (cantidad != null) {
                     seleccion.addAll(List(cantidad) { producto })
-                } else {
-                    println("Cantidad no válida: debe ser mayor a 0.")
                 }
             }
-        } while (confirmar("¿Agregar otra pizza? (s/n): "))
+        } while (confirmar("¿Agregar otro producto? (s/n): "))
 
         return seleccion
     }
@@ -134,11 +184,25 @@ class PizzeriaUI {
         println("6. Ver estadísticas de ventas")
         println("7. Ver clientes y repartidores")
         println("8. Ejecutar pruebas de casos límite")
+        println("9. Ver resumen completo de la Semana 3")
         println("0. Salir")
         println("====================================")
     }
 
     fun mostrarMensaje(mensaje: String) = println(mensaje)
+
+    // Resumen ordenado que sirve de confirmación para el cliente y para la pizzería.
+    fun mostrarResumenSemana3(secciones: List<SeccionResumen>, nota: String? = null) {
+        println("\n=====================================================")
+        println("   RESUMEN DE LA PIZZERÍA - SEMANA 3")
+        println("=====================================================")
+        for (seccion in secciones) {
+            println("\n[ ${seccion.titulo} ]")
+            seccion.lineas.forEach { println("  $it") }
+        }
+        nota?.let { println("\n$it") }
+        println("=====================================================")
+    }
 
     fun mostrarError(mensaje: String?) =
         println("Error: ${mensaje ?: "ocurrió un problema inesperado."} Corrige los datos e intenta nuevamente.")
@@ -173,14 +237,29 @@ class PizzeriaUI {
         for ((producto, cantidad) in pedido.productos.groupingBy { it }.eachCount()) {
             println("  ${cantidad}x ${producto.nombre} - ${formatearPrecio(producto.precio)} c/u = ${formatearPrecio(producto.precio * cantidad)}")
         }
+        // Los productos con @Promocionable se descubren con reflection
+        val promocionables = pedido.productosPromocionables()
+        if (promocionables.isNotEmpty()) {
+            println("PROMOCIONABLES")
+            for (promocionable in promocionables) {
+                println("  ${promocionable.producto.nombre} (${promocionable.motivo}: -${promocionable.porcentaje}%)")
+            }
+        }
         println("TOTALES")
         println("  Subtotal:  ${formatearPrecio(totales.subtotal)}")
         println("  Descuento: -${formatearPrecio(totales.descuento)}")
+        if (totales.descuentoAnotaciones > 0) {
+            println("    (incluye productos @Promocionable: -${formatearPrecio(totales.descuentoAnotaciones)})")
+        }
+        if (totales.descuentoPromocion > 0) {
+            println("    (incluye promoción del periodo: -${formatearPrecio(totales.descuentoPromocion)})")
+        }
         println("  IVA ($TASA_IVA%): ${formatearPrecio(totales.impuestos)}")
         println("  TOTAL:     ${formatearPrecio(totales.total)}")
         println("ESTADO")
+        println("  Fecha:      ${formatearFecha(pedido.fecha)}")
         println("  Estado:     ${pedido.estado.etiqueta}")
-        println("  Repartidor: ${pedido.repartidor?.nombre ?: if (confirmado) "Sin repartidores disponibles" else "Se asigna al confirmar"}")
+        println("  Repartidor: ${pedido.repartidor?.nombre ?: "Se asigna cuando el pedido esté listo"}")
         println("  Notas:      ${pedido.notas ?: "Sin notas"}")
         println("=====================================")
     }
@@ -199,7 +278,7 @@ class PizzeriaUI {
 
         for (pedido in reporte.pedidos) {
             println("Pedido N° ${pedido.id} | Cliente: ${pedido.cliente.nombre}")
-            println("   Pizzas: ${pedido.resumenProductos()}")
+            println("   Productos: ${pedido.resumenProductos()}")
             println("   Total: ${formatearPrecio(pedido.totales.total)} | Estado: ${pedido.estado.etiqueta}")
         }
 
